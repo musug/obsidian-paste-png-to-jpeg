@@ -1,11 +1,11 @@
 import {
   App, Plugin, PluginSettingTab, Setting, TFile, TAbstractFile,
-	MarkdownView, Notice,
+	MarkdownView, Notice, Vault,
 } from 'obsidian';
 
 import { renderTemplate } from './template';
 import {
-   debugLog, path,getVaultConfig, escapeRegExp, ConvertImage,ImageCompressor
+   debugLog, path, escapeRegExp, ConvertImage
 } from './utils';
 
 interface PluginSettings {
@@ -16,6 +16,7 @@ interface PluginSettings {
 	autoRename: boolean
 	pngToJpeg: boolean
 	quality: string
+	dirpath: string
 }
 
 const DEFAULT_SETTINGS: PluginSettings = {
@@ -24,13 +25,14 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	dupNumberDelimiter: '-',
 	autoRename: true,
 	pngToJpeg:true,
-	quality:'0.6' 
+	quality:'0.6',
+	dirpath:"image/" 
 }
 
 const PASTED_IMAGE_PREFIX = 'Pasted image '
 
 
-export default class PasteImageRenamePlugin extends Plugin {
+export default class PastePngToJpegPlugin extends Plugin {
 	settings: PluginSettings
 
 	async onload() 
@@ -45,7 +47,7 @@ export default class PasteImageRenamePlugin extends Plugin {
 				if (!(file instanceof TFile))
 					return
 
-				const timeGapMs = (new Date().getTime()) - file.stat.ctime
+				const timeGapMs = Date.now() - file.stat.ctime;
 
 				// if the pasted image is created more than 1 second ago, ignore it
 				if (timeGapMs > 1000)
@@ -73,103 +75,55 @@ export default class PasteImageRenamePlugin extends Plugin {
 			return
 		}
 
-		const { stem, newName, isMeaningful }= this.generateNewName(file, activeFile)
-		debugLog('generated newName:', newName, isMeaningful)
+		const newName:string = await this.generateNewName(file, activeFile)
 
 		this.renameFile(file, newName, activeFile.path)
 	}
 
-	async saveImage(file:File|Blob)
-	{
-		return new Promise(function(resolve, reject) {
-
-			let reader = new FileReader();
-		
-			reader.readAsArrayBuffer(file);
-		
-			reader.onload = function() 
-			{
-				resolve(this.result);
-			}
-		});
-	}
-
 	async renameFile(file: TFile, newName: string, sourcePath: string) {
 		// deduplicate name
-		const dirpath = "/image/"
-		const isCreate = await this.app.vault.adapter.exists(dirpath);
+
+		const isCreate = await this.app.vault.adapter.exists(this.settings.dirpath);
 		if( !isCreate )
 		{
-			await this.app.vault.createFolder(dirpath);
+			await this.app.vault.createFolder(this.settings.dirpath);
 		}
 
-		newName = await this.deduplicateNewName(newName, dirpath)
-		newName = dirpath + "/" + newName;
-		debugLog('deduplicated newName:', newName)
 		const originName = file.name;
 
 		if( this.settings.pngToJpeg)
 		{
-			var binary:ArrayBuffer;
-			binary = await this.app.vault.readBinary(file);
-
+			let binary:ArrayBuffer = await this.app.vault.readBinary(file);
 			let imgBlob:Blob = new Blob( [binary] );
-			let img:File;
-
-			const fileType = path.extension(originName);
-			const fileName = path.filename(originName);
-
-			//判断文件是不是jpeg 不是jpeg的都转成jpeg 
-			if (!['jpeg', 'jpg'].includes(fileType))
-			{
-				img = await ConvertImage(imgBlob, fileName);  //转jpeg格式的file
-			}
-			else
-			{
-				img = new File([imgBlob],originName,{type:imgBlob.type});
-			}
-	
-			newName = dirpath + path.filename(newName) + "."+ path.extension(img.name);
-			
-			console.log( "newName = " + newName);
-
-			let newImg:File|Blob = await ImageCompressor(img, "file", Number(this.settings.quality) ); //图片压缩
-			const formData = new FormData();
-			formData.append('file', newImg );  
-
-			await this.saveImage(newImg).then((value:ArrayBuffer)=>{
-				this.app.vault.modifyBinary(file,value);
-			});
-		}
-
-		// get vault config, determine whether useMarkdownLinks is set
-		const vaultConfig = getVaultConfig(this.app)
-		let useMarkdownLinks = false
-		if (vaultConfig && vaultConfig.useMarkdownLinks) 
-		{
-			useMarkdownLinks = true
+			let arrayBuffer:ArrayBuffer = await ConvertImage(imgBlob, Number( this.settings.quality ) );
+			this.app.vault.modifyBinary(file,arrayBuffer);
 		}
 
 		// get origin file link before renaming
-		const linkText = this.makeLinkText(originName, useMarkdownLinks, file, sourcePath)
+		const linkText = this.makeLinkText(file, sourcePath);
 
 		// file system operation
-		const newPath = path.join(file.parent.path, newName)
+		const newPath = path.join(file.parent.path, newName);
 		try 
 		{
-			await this.app.fileManager.renameFile(file, newPath)
+			await this.app.vault.rename(file, newPath);
 		} 
 		catch (err) 
 		{
 			new Notice(`Failed to rename ${newName}: ${err}`)
 			throw err
 		}
-		const newLinkText = this.makeLinkText(newName, useMarkdownLinks, this.app.vault.getAbstractFileByPath(newPath) as TFile, sourcePath)
+
+		/*
+			Here we can't get the correct return value from 'this.app.fileManager.generateMarkdownLink' function, for example, the correct value should be ! [[image/test-1.jpeg]] , but the return value is ! [[test-1.jpeg]], the previous image/ is missing
+			I suspect that the underlying implementation is based on name, not path, so I have to start with `! [[${ file.path}]]` to achieve
+		*/
+		const newLinkText = `![[${ file.path}]]`;
 		debugLog('replace text', linkText, newLinkText)
 
 		// in case fileManager.renameFile may not update the internal link in the active file,
 		// we manually replace by manipulating the editor
-		const editor = this.getActiveEditor()
+		const editor = this.getActiveEditor( sourcePath );
 		if (!editor) 
 		{
 			new Notice(`Failed to rename ${newName}: no active editor`)
@@ -193,16 +147,14 @@ export default class PasteImageRenamePlugin extends Plugin {
 		new Notice(`Renamed ${originName} to ${newName}`)
 	}
 
-	makeLinkText(fileName: string, useMarkdownLinks: boolean, file: TFile, sourcePath: string): string {
-		if (useMarkdownLinks) {
-			return this.app.fileManager.generateMarkdownLink(file, sourcePath)
-		} else {
-			return `[[${fileName}]]`
-		}
+	makeLinkText( file: TFile, sourcePath: string, subpath?:string): string 
+	{
+		return this.app.fileManager.generateMarkdownLink(file, sourcePath)
 	}
 
 	// returns a new name for the input file, with extension
-	generateNewName(file: TFile, activeFile: TFile) {
+	async generateNewName(file: TFile, activeFile: TFile):Promise<string>
+	{
 		let imageNameKey = ''
 		const fileCache = this.app.metadataCache.getFileCache(activeFile)
 		if (fileCache) {
@@ -216,23 +168,21 @@ export default class PasteImageRenamePlugin extends Plugin {
 			imageNameKey,
 			fileName: activeFile.basename,
 		})
-		const meaninglessRegex = new RegExp(`[${this.settings.dupNumberDelimiter}\s]`, 'gm')
 
-		return {
-			stem,
-			newName: stem + '.' + file.extension,
-			isMeaningful: stem.replace(meaninglessRegex, '') !== '',
-		}
+		const newName:string = await this.deduplicateNewName(stem + '.' + file.extension);
+
+		return newName;
 	}
 
 	// newName: foo.ext
-	async deduplicateNewName(newName: string, dirpath: string) {
+	async deduplicateNewName(newName: string):Promise<string> 
+	{
 		
-		const listed = await this.app.vault.adapter.list(dirpath)
+		const listed = await this.app.vault.adapter.list(this.settings.dirpath)
 		debugLog('sibling files', listed)
 
 		// parse newName
-		const newNameExt = path.extension(newName),
+		const newNameExt = this.settings.pngToJpeg?'jpeg':path.extension(newName),
 			newNameStem = path.filename(newName),
 			newNameStemEscaped = escapeRegExp(newNameStem),
 			delimiter = this.settings.dupNumberDelimiter,
@@ -260,25 +210,40 @@ export default class PasteImageRenamePlugin extends Plugin {
 			dupNameNumbers.push(parseInt(m.groups.number))
 		}
 
-		if (isNewNameExist) {
+		if (isNewNameExist) 
+		{
 			// get max number
 			const newNumber = dupNameNumbers.length > 0 ? Math.max(...dupNameNumbers) + 1 : 1
 			// change newName
-			newName = `${newNameStem}${delimiterEscaped}${newNumber}.${newNameExt}`; 
+			newName = `${this.settings.dirpath}${newNameStem}${delimiterEscaped}${newNumber}.${newNameExt}`; 
+		}
+		else
+		{
+			newName = `${this.settings.dirpath}${newNameStem}.${newNameExt}`;
 		}
 
 		return newName
 	}
 
-	getActiveFile() {
+	getActiveFile() 
+	{
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView)
 		const file = view?.file
 		debugLog('active file', file?.path)
 		return file
 	}
-	getActiveEditor() {
+
+	getActiveEditor(sourcePath:string) 
+	{
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-		return view?.editor
+		if( view )
+		{
+			if( view.file.path == sourcePath )
+			{
+				return view.editor
+			}
+		}
+		return null
 	}
 
 	async loadSettings() {
@@ -300,7 +265,7 @@ function isPastedImage(file: TAbstractFile): boolean {
 }
 
 const IMAGE_EXTS = [
-	'jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg',
+	'jpg', 'jpeg', 'png'
 ]
 
 function isImage(file: TAbstractFile): boolean {
@@ -313,9 +278,9 @@ function isImage(file: TAbstractFile): boolean {
 }
 
 class SettingTab extends PluginSettingTab {
-	plugin: PasteImageRenamePlugin;
+	plugin: PastePngToJpegPlugin;
 
-	constructor(app: App, plugin: PasteImageRenamePlugin) {
+	constructor(app: App, plugin: PastePngToJpegPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
