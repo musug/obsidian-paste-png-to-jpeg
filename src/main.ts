@@ -114,11 +114,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 			throw err
 		}
 
-		/*
-			Here we can't get the correct return value from 'this.app.fileManager.generateMarkdownLink' function, for example, the correct value should be ! [[image/test-1.jpeg]] , but the return value is ! [[test-1.jpeg]], the previous image/ is missing
-			I suspect that the underlying implementation is based on name, not path, so I have to start with `! [[${ file.path}]]` to achieve
-		*/
-		const newLinkText = `![[${ file.path}]]`;
+		const newLinkText = this.makeLinkText(file, sourcePath);
 		debugLog('replace text', linkText, newLinkText)
 
 		// in case fileManager.renameFile may not update the internal link in the active file,
@@ -149,7 +145,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 
 	makeLinkText( file: TFile, sourcePath: string, subpath?:string): string 
 	{
-		return this.app.fileManager.generateMarkdownLink(file, sourcePath)
+		return this.app.fileManager.generateMarkdownLink(file, sourcePath,subpath)
 	}
 
 	// returns a new name for the input file, with extension
