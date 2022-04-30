@@ -1,5 +1,4 @@
 import { App, Vault } from 'obsidian';
-import Compressor from "compressorjs";
 import { basename } from 'path';
 
 export const DEBUG = !(process.env.BUILD_ENV === 'production')
