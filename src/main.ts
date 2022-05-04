@@ -53,7 +53,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 				if (timeGapMs > 1000)
 					return
 
-				if (isPastedImage(file)) 
+				if (isImage(file)) 
 				{
 					debugLog('pasted image created', file)
 					this.renameImage(file, this.settings.autoRename)
