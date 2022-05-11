@@ -3,9 +3,8 @@ import {
 	MarkdownView, Notice, Vault,
 } from 'obsidian';
 
-import { renderTemplate } from './template';
 import {
-   debugLog, path, escapeRegExp, ConvertImage
+   debugLog, path, ConvertImage
 } from './utils';
 
 interface PluginSettings {
@@ -14,6 +13,7 @@ interface PluginSettings {
 	dupNumberAtStart: boolean
 	dupNumberDelimiter: string
 	autoRename: boolean
+	autoMove:boolean
 	pngToJpeg: boolean
 	quality: string
 	dirpath: string
@@ -24,13 +24,13 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	dupNumberAtStart: false,
 	dupNumberDelimiter: '-',
 	autoRename: true,
+	autoMove:true,
 	pngToJpeg:true,
 	quality:'0.6',
 	dirpath:"image/" 
 }
 
 const PASTED_IMAGE_PREFIX = 'Pasted image '
-
 
 export default class PastePngToJpegPlugin extends Plugin {
 	settings: PluginSettings
@@ -56,7 +56,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 				if (isImage(file)) 
 				{
 					debugLog('pasted image created', file)
-					this.renameImage(file, this.settings.autoRename)
+					this.renameFile(file);
 				} 
 			})
 		)
@@ -65,9 +65,8 @@ export default class PastePngToJpegPlugin extends Plugin {
 		this.addSettingTab(new SettingTab(this.app, this));
 	}
 
-	async renameImage(file: TFile, autoRename: boolean = false) 
+	async renameFile(file: TFile) 
 	{
-		// get active file first
 		const activeFile = this.getActiveFile()
 		if (!activeFile) 
 		{
@@ -75,22 +74,23 @@ export default class PastePngToJpegPlugin extends Plugin {
 			return
 		}
 
-		const newName:string = await this.generateNewName(file, activeFile)
-
-		this.renameFile(file, newName, activeFile.path)
-	}
-
-	async renameFile(file: TFile, newName: string, sourcePath: string) {
 		// deduplicate name
+		let newName:string = await this.generateNewName(file, activeFile);
+		const sourcePath:string = activeFile.path;
 
-		const isCreate = await this.app.vault.adapter.exists(this.settings.dirpath);
-		if( !isCreate )
+		if( this.settings.autoMove )
 		{
-			await this.app.vault.createFolder(this.settings.dirpath);
+			const imagePath = this.app.vault.getConfig("attachmentFolderPath") + "/" + this.settings.dirpath;
+			const isCreate = await this.app.vault.adapter.exists(imagePath);
+			if( !isCreate )
+			{
+				await this.app.vault.createFolder(imagePath);
+			}
+
+			newName = this.settings.dirpath + newName;
 		}
 
 		const originName = file.name;
-
 		if( this.settings.pngToJpeg)
 		{
 			let binary:ArrayBuffer = await this.app.vault.readBinary(file);
@@ -151,74 +151,10 @@ export default class PastePngToJpegPlugin extends Plugin {
 	// returns a new name for the input file, with extension
 	async generateNewName(file: TFile, activeFile: TFile):Promise<string>
 	{
-		let imageNameKey = ''
-		const fileCache = this.app.metadataCache.getFileCache(activeFile)
-		if (fileCache) {
-			debugLog('frontmatter', fileCache.frontmatter)
-			imageNameKey = fileCache.frontmatter?.imageNameKey || ''
-		} else {
-			console.warn('could not get file cache from active file', activeFile.name)
-		}
-
-		const stem = renderTemplate(this.settings.imageNamePattern, {
-			imageNameKey,
-			fileName: activeFile.basename,
-		})
-
-		const newName:string = await this.deduplicateNewName(stem + '.' + file.extension);
-
-		return newName;
-	}
-
-	// newName: foo.ext
-	async deduplicateNewName(newName: string):Promise<string> 
-	{
+		const newName = activeFile.basename + '-' + Date.now();
+		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
 		
-		const listed = await this.app.vault.adapter.list(this.settings.dirpath)
-		debugLog('sibling files', listed)
-
-		// parse newName
-		const newNameExt = this.settings.pngToJpeg?'jpeg':path.extension(newName),
-			newNameStem = path.filename(newName),
-			newNameStemEscaped = escapeRegExp(newNameStem),
-			delimiter = this.settings.dupNumberDelimiter,
-			delimiterEscaped = escapeRegExp(delimiter)
-
-		let dupNameRegex = new RegExp(
-				`^(?<name>${newNameStemEscaped})${delimiterEscaped}(?<number>\\d+)`)
-
-		debugLog('dupNameRegex', dupNameRegex)
-
-		const dupNameNumbers: number[] = []
-		let isNewNameExist = false
-		for (let sibling of listed.files) {
-			sibling = path.filename(sibling)
-			if (sibling == newNameStem ) 
-			{
-				isNewNameExist = true
-				continue
-			}
-
-			// match dupNames
-			const m = dupNameRegex.exec(sibling)
-			if (!m) continue
-			// parse int for m.groups.number
-			dupNameNumbers.push(parseInt(m.groups.number))
-		}
-
-		if (isNewNameExist) 
-		{
-			// get max number
-			const newNumber = dupNameNumbers.length > 0 ? Math.max(...dupNameNumbers) + 1 : 1
-			// change newName
-			newName = `${this.settings.dirpath}${newNameStem}${delimiterEscaped}${newNumber}.${newNameExt}`; 
-		}
-		else
-		{
-			newName = `${this.settings.dirpath}${newNameStem}.${newNameExt}`;
-		}
-
-		return newName
+		return `${newName}.${extension}`;
 	}
 
 	getActiveFile() 
@@ -287,8 +223,7 @@ class SettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Png to Jpeg')
-			.setDesc(`Paste images from ClipBoard to notes by copying them through various screenshot software, 
-			turn on this feature will automatically convert png to jpeg, and more quality compression volume.`)
+			.setDesc(`Paste images from ClipBoard to notes by copying them through various screenshot software,turn on this feature will automatically convert png to jpeg, and more quality compression volume.`)
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.pngToJpeg)
 				.onChange(async (value) => {
@@ -305,6 +240,28 @@ class SettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.quality)
 				.onChange(async (value) => {
 					this.plugin.settings.quality = value;
+					await this.plugin.saveSettings();
+				}
+			));	
+			
+		new Setting(containerEl)
+			.setName('Auto Rname')
+			.setDesc(`Automatically names the image with the name of the previous note +'-'+ the current timestamp + '.' + file type, for example, the image in test.md will be named test-1652261724173.jpeg`)
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoRename)
+				.onChange(async (value) => {
+					this.plugin.settings.autoRename = value;
+					await this.plugin.saveSettings();
+				}
+			));	
+			
+		new Setting(containerEl)
+			.setName('Auto Move Image')
+			.setDesc(`Automatically move images to the image directory,If you do not set the default directory for attachments, then it will be stored directly under the image/ folder in the same directory as the notes, if there is a default directory, then it will be stored under the image/ folder in the Magician directory`)
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoMove)
+				.onChange(async (value) => {
+					this.plugin.settings.autoMove = value;
 					await this.plugin.saveSettings();
 				}
 			));				
