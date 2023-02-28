@@ -77,7 +77,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 		// deduplicate name
 		let newName:string = await this.keepOrgName(file, activeFile);
 		if (this.settings.autoRename) {
-        	newName = yield this.generateNewName(file, activeFile);
+        	newName = await this.generateNewName(file, activeFile);
       	}
 		const sourcePath:string = activeFile.path;
 
