@@ -75,7 +75,10 @@ export default class PastePngToJpegPlugin extends Plugin {
 		}
 
 		// deduplicate name
-		let newName:string = await this.generateNewName(file, activeFile);
+		let newName:string = await this.keepOrgName(file, activeFile);
+		if (this.settings.autoRename) {
+        	newName = yield this.generateNewName(file, activeFile);
+      	}
 		const sourcePath:string = activeFile.path;
 
 		if( this.settings.autoMove )
@@ -152,6 +155,15 @@ export default class PastePngToJpegPlugin extends Plugin {
 	async generateNewName(file: TFile, activeFile: TFile):Promise<string>
 	{
 		const newName = activeFile.basename + '-' + Date.now();
+		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
+		
+		return `${newName}.${extension}`;
+	}
+	
+	// changes only the extension
+	async keepOrgName(file: TFile, activeFile: TFile):Promise<string>
+	{
+		const newName = file.basename;
 		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
 		
 		return `${newName}.${extension}`;
@@ -245,7 +257,7 @@ class SettingTab extends PluginSettingTab {
 			));	
 			
 		new Setting(containerEl)
-			.setName('Auto Rname')
+			.setName('Auto Rename')
 			.setDesc(`Automatically names the image with the name of the previous note +'-'+ the current timestamp + '.' + file type, for example, the image in test.md will be named test-1652261724173.jpeg`)
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.autoRename)
