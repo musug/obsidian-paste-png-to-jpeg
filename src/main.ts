@@ -81,6 +81,7 @@ export default class PastePngToJpegPlugin extends Plugin {
       	}
 		const sourcePath:string = activeFile.path;
 
+		let newPath = "";
 		if( this.settings.autoMove )
 		{
 			const imagePath = this.app.vault.getConfig("attachmentFolderPath") + "/" + this.settings.dirpath;
@@ -90,23 +91,27 @@ export default class PastePngToJpegPlugin extends Plugin {
 				await this.app.vault.createFolder(imagePath);
 			}
 
-			newName = this.settings.dirpath + newName;
+			newPath = imagePath;
 		}
-
+		else
+		{
+			newPath = file.parent.path + + "/" + this.settings.dirpath;
+		}
+		
 		const originName = file.name;
 		if( this.settings.pngToJpeg)
 		{
 			let binary:ArrayBuffer = await this.app.vault.readBinary(file);
 			let imgBlob:Blob = new Blob( [binary] );
 			let arrayBuffer:ArrayBuffer = await ConvertImage(imgBlob, Number( this.settings.quality ) );
-			this.app.vault.modifyBinary(file,arrayBuffer);
+			await this.app.vault.modifyBinary(file,arrayBuffer);
 		}
 
 		// get origin file link before renaming
 		const linkText = this.makeLinkText(file, sourcePath);
 
 		// file system operation
-		const newPath = path.join(file.parent.path, newName);
+		newPath =path.join(newPath, newName)
 		try 
 		{
 			await this.app.vault.rename(file, newPath);
