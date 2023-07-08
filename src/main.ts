@@ -27,7 +27,8 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	autoMove:true,
 	pngToJpeg:true,
 	quality:'0.6',
-	dirpath:"image/" 
+	dirpath:"image/",
+    extension: "jpg"
 }
 
 const PASTED_IMAGE_PREFIX = 'Pasted image '
@@ -160,7 +161,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 	async generateNewName(file: TFile, activeFile: TFile):Promise<string>
 	{
 		const newName = activeFile.basename + '-' + Date.now();
-		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
+		const extension = this.settings.pngToJpeg ? this.settings.extension : file.extension;
 		
 		return `${newName}.${extension}`;
 	}
@@ -169,7 +170,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 	async keepOrgName(file: TFile, activeFile: TFile):Promise<string>
 	{
 		const newName = file.basename;
-		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
+		const extension = this.settings.pngToJpeg ? this.settings.extension : file.extension;
 		
 		return `${newName}.${extension}`;
 	}
@@ -281,6 +282,18 @@ class SettingTab extends PluginSettingTab {
 					this.plugin.settings.autoMove = value;
 					await this.plugin.saveSettings();
 				}
-			));				
+			));
+	    new Setting(containerEl)
+		    .setName('File extension')
+		    .setDesc('File extension to be used at the file rename operation')
+		    .addDropdown((dropDown) => dropDown
+		        .addOption('jpeg', 'jpeg')
+		        .addOption('jpg', 'jpg')
+		        .setValue(this.plugin.settings.extension || 'jpg')
+		        .onChange((value) => __async(this, null, function* () {
+		          this.plugin.settings.extension = value;
+		          yield this.plugin.saveSettings();
+				}
+			));
 	}
 }
