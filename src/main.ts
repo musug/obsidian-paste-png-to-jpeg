@@ -88,12 +88,6 @@ export default class PastePngToJpegPlugin extends Plugin {
 		{
 			// @ts-ignore
 			const imagePath = this.app.vault.getConfig("attachmentFolderPath") + "/" + this.settings.dirpath;
-			const isCreate = await this.app.vault.adapter.exists(imagePath);
-			if( !isCreate )
-			{
-				await this.app.vault.createFolder(imagePath);
-			}
-
 			newPath = imagePath;
 		}
 		else
@@ -309,5 +303,16 @@ class SettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}
 			));
+
+		new Setting(containerEl)
+			.setName('Default folder name')
+			.setDesc(`Default top level folder name when moving files. The default value is image`)
+			.addText(text => text
+				.setValue(this.plugin.settings.dirpath)
+				.onChange(async (value) => {
+					this.plugin.settings.dirpath = value;
+					await this.plugin.saveSettings();
+				}
+			));	
 	}
 }
