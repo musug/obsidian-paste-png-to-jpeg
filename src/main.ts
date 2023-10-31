@@ -95,7 +95,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 		}
 		else
 		{
-			newPath = file.parent.path + + "/" + this.settings.dirpath;
+			newPath = file.parent.path + "/" + this.settings.dirpath;
 		}
 		
 		const originName = file.name;
@@ -109,6 +109,18 @@ export default class PastePngToJpegPlugin extends Plugin {
 
 		// get origin file link before renaming
 		const linkText = this.makeLinkText(file, sourcePath);
+
+		// create target directory if not exist
+		const fileSystemAdapter = this.app.vault.adapter
+		const exist = await fileSystemAdapter.exists(newPath)
+		if (!exist) {
+			try {
+				await this.app.vault.createFolder(newPath);
+			} catch (err) {
+				new Notice(`Failed to create folder ${newPath}`)
+				throw err
+			};
+		}
 
 		// file system operation
 		newPath =path.join(newPath, newName)
