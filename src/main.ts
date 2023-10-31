@@ -14,6 +14,7 @@ interface PluginSettings {
 	dupNumberDelimiter: string
 	autoRename: boolean
 	autoMove:boolean
+	enableNotice:boolean
 	pngToJpeg: boolean
 	quality: string
 	dirpath: string
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	dupNumberDelimiter: '-',
 	autoRename: true,
 	autoMove:true,
+	enableNotice:false,
 	pngToJpeg:true,
 	quality:'0.6',
 	dirpath:"image/" 
@@ -84,6 +86,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 		let newPath = "";
 		if( this.settings.autoMove )
 		{
+			// @ts-ignore
 			const imagePath = this.app.vault.getConfig("attachmentFolderPath") + "/" + this.settings.dirpath;
 			const isCreate = await this.app.vault.adapter.exists(imagePath);
 			if( !isCreate )
@@ -160,7 +163,9 @@ export default class PastePngToJpegPlugin extends Plugin {
 			]
 		})
 
-		new Notice(`Renamed ${originName} to ${newName}`)
+		if (this.settings.enableNotice) {
+			new Notice(`Renamed ${originName} to ${newName}`)
+		}
 	}
 
 	makeLinkText( file: TFile, sourcePath: string, subpath?:string): string 
@@ -293,6 +298,16 @@ class SettingTab extends PluginSettingTab {
 					this.plugin.settings.autoMove = value;
 					await this.plugin.saveSettings();
 				}
-			));				
+			));
+
+		new Setting(containerEl)
+			.setName('Notice When Succeeded')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableNotice)
+				.onChange(async (value) => {
+					this.plugin.settings.enableNotice = value;
+					await this.plugin.saveSettings();
+				}
+			));
 	}
 }
