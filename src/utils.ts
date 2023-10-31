@@ -127,7 +127,7 @@ export function getVaultConfig(app: App): VaultConfig|null {
 	return vault.config
 }
 
-export function ConvertImage(file:Blob, quality:number):Promise<ArrayBuffer> {
+export function ConvertImage(file:Blob, quality:number, imageType:string):Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => 
 	{
         let reader = new FileReader(); //读取file
@@ -153,7 +153,7 @@ export function ConvertImage(file:Blob, quality:number):Promise<ArrayBuffer> {
                 context.drawImage(image, 0, 0, imageWidth, imageHeight,-imageWidth/2,-imageHeight/2,imageWidth,imageHeight);
 				context.restore();
 
-                data = canvas.toDataURL('image/jpeg',quality);
+                data = canvas.toDataURL(imageType || 'image/jpeg',quality);
 
                 var arrayBuffer = base64ToArrayBuffer(data);
                 resolve(arrayBuffer)
