@@ -177,6 +177,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 	getActiveFile() 
 	{
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    	             || this.app.workspace.getActiveViewOfType(ItemView)
 		const file = view?.file
 		debugLog('active file', file?.path)
 		return file
