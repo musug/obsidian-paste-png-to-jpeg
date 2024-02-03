@@ -84,7 +84,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 		let newPath = "";
 		if( this.settings.autoMove )
 		{
-			const imagePath = this.app.vault.getConfig("attachmentFolderPath") + "/" + this.settings.dirpath;
+			const imagePath = (this.app.vault as any)?.getConfig('attachmentFolderPath') + '/' + this.settings.dirpath;
 			const isCreate = await this.app.vault.adapter.exists(imagePath);
 			if( !isCreate )
 			{
