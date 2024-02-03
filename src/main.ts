@@ -1,11 +1,6 @@
-import {
-  App, Plugin, PluginSettingTab, Setting, TFile, TAbstractFile,
-	MarkdownView, Notice, Vault,
-} from 'obsidian';
+import { App, EditableFileView, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile } from 'obsidian';
 
-import {
-   debugLog, path, ConvertImage
-} from './utils';
+import { ConvertImage, debugLog, path } from './utils';
 
 interface PluginSettings {
 	// {{imageNameKey}}-{{DATE:YYYYMMDD}}
@@ -177,7 +172,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 	getActiveFile() 
 	{
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    	             || this.app.workspace.getActiveViewOfType(ItemView)
+    	             || this.app.workspace.getActiveViewOfType(EditableFileView)
 		const file = view?.file
 		debugLog('active file', file?.path)
 		return file
