@@ -14,8 +14,10 @@ interface PluginSettings {
 	dupNumberDelimiter: string
 	autoRename: boolean
 	autoMove:boolean
+	enableNotice:boolean
 	pngToJpeg: boolean
 	quality: string
+	imgType: string
 	dirpath: string
 }
 
@@ -24,9 +26,11 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	dupNumberAtStart: false,
 	dupNumberDelimiter: '-',
 	autoRename: true,
-	autoMove:true,
+	autoMove:false,
+	enableNotice:false,
 	pngToJpeg:true,
 	quality:'0.6',
+	imgType: "webp",
 	dirpath:"image/" 
 }
 
@@ -84,18 +88,13 @@ export default class PastePngToJpegPlugin extends Plugin {
 		let newPath = "";
 		if( this.settings.autoMove )
 		{
+			// @ts-ignore
 			const imagePath = this.app.vault.getConfig("attachmentFolderPath") + "/" + this.settings.dirpath;
-			const isCreate = await this.app.vault.adapter.exists(imagePath);
-			if( !isCreate )
-			{
-				await this.app.vault.createFolder(imagePath);
-			}
-
 			newPath = imagePath;
 		}
 		else
 		{
-			newPath = file.parent.path + + "/" + this.settings.dirpath;
+			newPath = file.parent.path + "/" + this.settings.dirpath;
 		}
 		
 		const originName = file.name;
@@ -103,12 +102,24 @@ export default class PastePngToJpegPlugin extends Plugin {
 		{
 			let binary:ArrayBuffer = await this.app.vault.readBinary(file);
 			let imgBlob:Blob = new Blob( [binary] );
-			let arrayBuffer:ArrayBuffer = await ConvertImage(imgBlob, Number( this.settings.quality ) );
+			let arrayBuffer:ArrayBuffer = await ConvertImage(imgBlob, Number( this.settings.quality ), this.settings.imgType );
 			await this.app.vault.modifyBinary(file,arrayBuffer);
 		}
 
 		// get origin file link before renaming
 		const linkText = this.makeLinkText(file, sourcePath);
+
+		// create target directory if not exist
+		const fileSystemAdapter = this.app.vault.adapter
+		const exist = await fileSystemAdapter.exists(newPath)
+		if (!exist) {
+			try {
+				await this.app.vault.createFolder(newPath);
+			} catch (err) {
+				new Notice(`Failed to create folder ${newPath}`)
+				throw err
+			};
+		}
 
 		// file system operation
 		newPath =path.join(newPath, newName)
@@ -148,7 +159,9 @@ export default class PastePngToJpegPlugin extends Plugin {
 			]
 		})
 
-		new Notice(`Renamed ${originName} to ${newName}`)
+		if (this.settings.enableNotice) {
+			new Notice(`Renamed ${originName} to ${newName}`)
+		}
 	}
 
 	makeLinkText( file: TFile, sourcePath: string, subpath?:string): string 
@@ -160,7 +173,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 	async generateNewName(file: TFile, activeFile: TFile):Promise<string>
 	{
 		const newName = activeFile.basename + '-' + Date.now();
-		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
+		const extension = this.settings.pngToJpeg ? this.settings.imgType : file.extension;
 		
 		return `${newName}.${extension}`;
 	}
@@ -169,7 +182,7 @@ export default class PastePngToJpegPlugin extends Plugin {
 	async keepOrgName(file: TFile, activeFile: TFile):Promise<string>
 	{
 		const newName = file.basename;
-		const extension = this.settings.pngToJpeg ? 'jpeg' : file.extension;
+		const extension = this.settings.pngToJpeg ? this.settings.imgType : file.extension;
 		
 		return `${newName}.${extension}`;
 	}
@@ -259,6 +272,18 @@ class SettingTab extends PluginSettingTab {
 					this.plugin.settings.quality = value;
 					await this.plugin.saveSettings();
 				}
+			));
+
+		new Setting(containerEl)
+			.setName('Image type')
+			.setDesc(`Use for compress`)
+			.addDropdown(toggle => toggle
+				.addOptions({'webp':'image/webp', 'jpeg':'image/jpeg'})
+				.setValue(this.plugin.settings.imgType)
+				.onChange(async (value) => {
+					this.plugin.settings.imgType = value;
+					await this.plugin.saveSettings();
+				}
 			));	
 			
 		new Setting(containerEl)
@@ -281,6 +306,27 @@ class SettingTab extends PluginSettingTab {
 					this.plugin.settings.autoMove = value;
 					await this.plugin.saveSettings();
 				}
-			));				
+			));
+
+		new Setting(containerEl)
+			.setName('Notice When Succeeded')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableNotice)
+				.onChange(async (value) => {
+					this.plugin.settings.enableNotice = value;
+					await this.plugin.saveSettings();
+				}
+			));
+
+		new Setting(containerEl)
+			.setName('Default folder name')
+			.setDesc(`Default top level folder name when moving files.`)
+			.addText(text => text
+				.setValue(this.plugin.settings.dirpath)
+				.onChange(async (value) => {
+					this.plugin.settings.dirpath = value;
+					await this.plugin.saveSettings();
+				}
+			));
 	}
 }

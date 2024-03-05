@@ -127,43 +127,44 @@ export function getVaultConfig(app: App): VaultConfig|null {
 	return vault.config
 }
 
-export function ConvertImage(file:Blob, quality:number):Promise<ArrayBuffer> {
-    return new Promise((resolve, reject) => 
-	{
-        let reader = new FileReader(); //读取file
-        reader.onloadend = function (e) 
-		{
-            let image = new Image() //新建一个img标签（还没嵌入DOM节点)
-            image.onload = function () 
-			{
-                let canvas = document.createElement('canvas');
-                let context = canvas.getContext('2d');
-                let imageWidth = image.width;
-                let imageHeight = image.height;
-                let data = '';
+export function ConvertImage(file: Blob, quality: number, imageType: string): Promise<ArrayBuffer> {
+	return new Promise((resolve, reject) => {
+		let reader = new FileReader();
+		reader.onloadend = function (e) {
+			let image = new Image();
+			image.onload = function () {
+				let canvas = document.createElement('canvas');
+				let context = canvas.getContext('2d');
+				let imageWidth = image.width;
+				let imageHeight = image.height;
 
-                canvas.width = imageWidth;
-                canvas.height = imageHeight;
+				const ratio = 1 / window.devicePixelRatio;
+				imageWidth = imageWidth * ratio;
+				imageHeight = imageHeight * ratio;
+
+				let data = '';
+
+				canvas.width = imageWidth;
+				canvas.height = imageHeight;
 
 				context.fillStyle = '#fff';
 				context.fillRect(0, 0, imageWidth, imageHeight);
 				context.save();
 
 				context.translate(imageWidth / 2, imageHeight / 2);
-                context.drawImage(image, 0, 0, imageWidth, imageHeight,-imageWidth/2,-imageHeight/2,imageWidth,imageHeight);
+				context.drawImage(image, 0, 0, image.width, image.height, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
 				context.restore();
 
-                data = canvas.toDataURL('image/jpeg',quality);
+				data = canvas.toDataURL(imageType || 'image/jpeg', quality);
+				var arrayBuffer = base64ToArrayBuffer(data);
+				resolve(arrayBuffer);
+			}
 
-                var arrayBuffer = base64ToArrayBuffer(data);
-                resolve(arrayBuffer)
-            }
-
-			image.src = e.target.result.toString() //将图片的路径设成file路径
-        }
+			image.src = e.target.result.toString();
+		}
 
 		reader.readAsDataURL(file);
-    })
+	})
 }
 
 function base64ToArrayBuffer (code:string):ArrayBuffer
